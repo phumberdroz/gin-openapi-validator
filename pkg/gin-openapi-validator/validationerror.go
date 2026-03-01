@@ -1,4 +1,5 @@
 package ginopenapivalidator
+
 // Copied from https://github.com/getkin/kin-openapi/blob/17153345908503543b50b7b6409f9d030bae0beb/openapi3filter/validation_error_encoder.go
 // and modified
 // Original license is MIT by the authors of kin-openapi
