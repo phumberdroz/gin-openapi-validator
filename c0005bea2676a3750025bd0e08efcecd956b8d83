@@ -1,0 +1,27 @@
+README.md
+  8cf3d012aa21b1a1 2-60
+pkg/gin-openapi-validator/validationerror.go
+  8cf3d012aa21b1a1 2
+.golangci.yaml
+  8cf3d012aa21b1a1 1,8-12,15,37-85,90-109,120-127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.7",
+  "base_commit_sha": "c0005bea2676a3750025bd0e08efcecd956b8d83",
+  "prompts": {
+    "8cf3d012aa21b1a1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019caa9e-589d-7b62-81c5-9ff62077e7bb",
+        "model": "unknown"
+      },
+      "human_author": "Pierre Humberdroz <p.humberdroz@gmail.com>",
+      "messages": [],
+      "total_additions": 196,
+      "total_deletions": 311,
+      "accepted_lines": 181,
+      "overriden_lines": 0
+    }
+  }
+}
