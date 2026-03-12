@@ -21,6 +21,10 @@ func (w responseBodyWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
+func wrapResponseWriter(c *gin.Context) {
+	c.Writer = &responseBodyWriter{body: &bytes.Buffer{}, ResponseWriter: c.Writer}
+}
+
 // ValidatorOptions currently not used but we may use it in the future to add options.
 type ValidatorOptions struct {
 }
@@ -39,36 +43,35 @@ func Validator(doc []byte, _ ...ValidatorOptions) gin.HandlerFunc {
 	if err != nil {
 		panic(err)
 	}
+
 	return func(c *gin.Context) {
 		// Find route
 		route, pathParams, err := router.FindRoute(c.Request)
 		if err != nil {
-			decodedValidationError, errDecode := Decode(err)
-			if errDecode != nil {
-				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-			} else {
-				c.AbortWithStatusJSON(decodedValidationError.Status, gin.H{"error": decodedValidationError.Title})
-			}
+			abortForValidationError(c, err)
+
 			return
 		}
+
 		requestValidationInput := &openapi3filter.RequestValidationInput{
 			Request:    c.Request,
 			PathParams: pathParams,
 			Route:      route,
 		}
+
 		err = openapi3filter.ValidateRequest(c.Request.Context(), requestValidationInput)
-		w := &responseBodyWriter{body: &bytes.Buffer{}, ResponseWriter: c.Writer}
-		c.Writer = w
 		if err != nil {
-			decodedValidationError, errDecode := Decode(err)
-			if errDecode != nil && decodedValidationError != nil && decodedValidationError.Status != 0 && decodedValidationError.Title != "" {
-				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-			} else {
-				c.AbortWithStatusJSON(decodedValidationError.Status, gin.H{"error": decodedValidationError.Title})
-			}
+			abortForValidationError(c, err)
+
 			return
 		}
+
+		wrapResponseWriter(c)
+
 		c.Next()
+
+		w := c.Writer.(*responseBodyWriter)
+
 		responseValidationInput := &openapi3filter.ResponseValidationInput{
 			RequestValidationInput: requestValidationInput,
 			Status:                 c.Writer.Status(),
@@ -81,9 +84,21 @@ func Validator(doc []byte, _ ...ValidatorOptions) gin.HandlerFunc {
 		if w.body.String() != "" {
 			responseValidationInput.SetBodyBytes(w.body.Bytes())
 		}
+
 		// Validate response.
 		if err := openapi3filter.ValidateResponse(c.Request.Context(), responseValidationInput); err != nil {
 			log.WithError(err).Error("could not validate response payload")
 		}
 	}
+}
+
+func abortForValidationError(c *gin.Context, err error) {
+	decodedValidationError, errDecode := Decode(err)
+	if errDecode != nil || decodedValidationError == nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+
+		return
+	}
+
+	c.AbortWithStatusJSON(decodedValidationError.Status, gin.H{"error": decodedValidationError.Title})
 }

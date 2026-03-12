@@ -5,7 +5,6 @@ package ginopenapivalidator
 // Original license is MIT by the authors of kin-openapi
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -15,6 +14,8 @@ import (
 	"github.com/getkin/kin-openapi/routers"
 )
 
+const unsupportedContentTypeReason = "header 'Content-Type' has unexpected value: "
+
 // Decode takes a Validation error and decodes back to a *openapi3filter.ValidationError
 func Decode(err error) (*openapi3filter.ValidationError, error) {
 	var cErr *openapi3filter.ValidationError
@@ -23,10 +24,13 @@ func Decode(err error) (*openapi3filter.ValidationError, error) {
 			Status: http.StatusNotFound,
 			Title:  "not found",
 		}
+
 		return cErr, nil
 	}
+
 	if e, ok := err.(*routers.RouteError); ok {
 		cErr = convertRouteError(e)
+
 		return cErr, nil
 	}
 
@@ -48,26 +52,27 @@ func Decode(err error) (*openapi3filter.ValidationError, error) {
 	if cErr != nil {
 		return cErr, nil
 	}
+
 	return nil, err
 }
 
 func convertRouteError(e *routers.RouteError) *openapi3filter.ValidationError {
 	var cErr *openapi3filter.ValidationError
-	fmt.Println(errors.Is(e, routers.ErrPathNotFound))
-	//errors.As()
+
 	switch e.Reason {
 	case "Path doesn't support the HTTP method":
 		cErr = &openapi3filter.ValidationError{Status: http.StatusMethodNotAllowed, Title: e.Reason}
 	default:
 		cErr = &openapi3filter.ValidationError{Status: http.StatusNotFound, Title: e.Reason}
 	}
+
 	return cErr
 }
 
 func convertBasicRequestError(e *openapi3filter.RequestError) *openapi3filter.ValidationError {
 	var cErr *openapi3filter.ValidationError
-	unsupportedContentType := "header 'Content-Type' has unexpected value: "
-	if strings.HasPrefix(e.Reason, unsupportedContentType) {
+
+	if strings.HasPrefix(e.Reason, unsupportedContentTypeReason) {
 		if strings.HasSuffix(e.Reason, `: ""`) {
 			cErr = &openapi3filter.ValidationError{
 				Status: http.StatusUnsupportedMediaType,
@@ -76,7 +81,7 @@ func convertBasicRequestError(e *openapi3filter.RequestError) *openapi3filter.Va
 		} else {
 			cErr = &openapi3filter.ValidationError{
 				Status: http.StatusUnsupportedMediaType,
-				Title:  "unsupported content type " + strings.TrimPrefix(e.Reason, unsupportedContentType),
+				Title:  "unsupported content type " + strings.TrimPrefix(e.Reason, unsupportedContentTypeReason),
 			}
 		}
 	} else {
@@ -85,11 +90,13 @@ func convertBasicRequestError(e *openapi3filter.RequestError) *openapi3filter.Va
 			Title:  e.Error(),
 		}
 	}
+
 	return cErr
 }
 
 func convertErrInvalidRequired(e *openapi3filter.RequestError) *openapi3filter.ValidationError {
 	var cErr *openapi3filter.ValidationError
+
 	if e.Reason == openapi3filter.ErrInvalidRequired.Error() && e.Parameter != nil {
 		cErr = &openapi3filter.ValidationError{
 			Status: http.StatusBadRequest,
@@ -101,6 +108,7 @@ func convertErrInvalidRequired(e *openapi3filter.RequestError) *openapi3filter.V
 			Title:  e.Error(),
 		}
 	}
+
 	return cErr
 }
 
@@ -139,9 +147,11 @@ func convertParseError(e *openapi3filter.RequestError, innerErr *openapi3filter.
 			}
 		}
 	}
+
 	if cErr.Title == "" {
 		cErr.Title = "Could not parse request body"
 	}
+
 	return cErr
 }
 
@@ -167,6 +177,7 @@ func convertSchemaError(e *openapi3filter.RequestError, innerErr *openapi3.Schem
 		cErr.Source = &openapi3filter.ValidationErrorSource{
 			Parameter: e.Parameter.Name,
 		}
+
 		cErr.Title += " See " + cErr.Source.Parameter
 	} else if innerErr.JSONPointer() != nil {
 		pointer := innerErr.JSONPointer()
@@ -174,6 +185,7 @@ func convertSchemaError(e *openapi3filter.RequestError, innerErr *openapi3.Schem
 		cErr.Source = &openapi3filter.ValidationErrorSource{
 			Pointer: toJSONPointer(pointer),
 		}
+
 		cErr.Title += " See " + cErr.Source.Pointer
 	}
 
@@ -184,17 +196,22 @@ func convertSchemaError(e *openapi3filter.RequestError, innerErr *openapi3.Schem
 		for _, enum := range innerErr.Schema.Enum {
 			enums = append(enums, fmt.Sprintf("%v", enum))
 		}
+
 		cErr.Detail = fmt.Sprintf("Value '%v' at %s must be one of: %s",
 			innerErr.Value, toJSONPointer(innerErr.JSONPointer()), strings.Join(enums, ", "))
+
 		value := fmt.Sprintf("%v", innerErr.Value)
+
 		if (e.Parameter.Explode == nil || *e.Parameter.Explode) &&
 			(e.Parameter.Style == "" || e.Parameter.Style == "form") &&
 			strings.Contains(value, ",") {
 			parts := strings.Split(value, ",")
+
 			cErr.Detail = cErr.Detail + "; " + fmt.Sprintf("perhaps you intended '?%s=%s'",
 				e.Parameter.Name, strings.Join(parts, "&"+e.Parameter.Name+"="))
 		}
 	}
+
 	return cErr
 }
 

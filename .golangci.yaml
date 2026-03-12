@@ -34,14 +34,14 @@ linters:
     - unparam
     - unused
     - whitespace
-    - wsl
+    - wsl_v5
   settings:
     errcheck:
       check-type-assertions: false
       check-blank: false
 
     gosec:
-      exclude:
+      excludes:
         - "G104"
 
     funlen:
@@ -67,9 +67,6 @@ linters:
       ignore-rules:
         - gitlab
 
-    unused:
-      check-exported: false
-
     unparam:
       check-exported: false
 
@@ -93,17 +90,29 @@ linters:
     dogsled:
       max-blank-identifiers: 2
 
+    depguard:
+      rules:
+        main:
+          list-mode: lax
+          allow:
+            - $gostd
+            - github.com/getkin/kin-openapi
+            - github.com/gin-gonic/gin
+            - github.com/sirupsen/logrus
+            - github.com/stretchr/testify
+            - github.com/phumberdroz/gin-openapi-validator
+
     whitespace:
       multi-if: false
       multi-func: false
 
-    wsl:
-      strict-append: true
-      allow-assign-and-call: true
-      allow-multiline-assign: true
-      allow-cuddle-declarations: false
-      allow-trailing-comment: false
-      force-case-trailing-whitespace: 0
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: true
+      case-max-lines: 0
+      default: all
+      disable:
+        - assign-expr
 
   exclusions:
     rules:
