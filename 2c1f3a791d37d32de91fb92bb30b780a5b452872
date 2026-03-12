@@ -1,0 +1,37 @@
+AGENTS.md
+  8cf3d012aa21b1a1 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.10",
+  "base_commit_sha": "2c1f3a791d37d32de91fb92bb30b780a5b452872",
+  "prompts": {
+    "6f93d914471d3e95": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019caa9d-566c-7af0-973d-51e1f30f29ac",
+        "model": "gpt-5.3-codex-spark"
+      },
+      "human_author": "Pierre Humberdroz <p.humberdroz@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/761c3a7e9ebd31d1583e6aab1d95580dc256d9b8f0984d223988bae5bfa88481"
+    },
+    "8cf3d012aa21b1a1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019caa9e-589d-7b62-81c5-9ff62077e7bb",
+        "model": "unknown"
+      },
+      "human_author": "Pierre Humberdroz <p.humberdroz@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 37,
+      "overriden_lines": 0
+    }
+  }
+}
