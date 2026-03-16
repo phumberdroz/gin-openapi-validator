@@ -84,7 +84,7 @@ func TestStatusOkButWrongResponse(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.Code)
 	assert.Len(t, hook.Entries, 1)
 	assert.Equal(t, logrus.ErrorLevel, hook.LastEntry().Level)
-	assert.Equal(t, "could not validate response payload", hook.LastEntry().Message)
+	assert.Equal(t, "response payload violates OpenAPI contract", hook.LastEntry().Message)
 }
 
 func TestStatusOkUsersUuid(t *testing.T) {

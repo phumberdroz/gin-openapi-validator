@@ -7,7 +7,8 @@ This package plugs into Gin and validates incoming requests and outgoing respons
 ## Features
 - Validate requests (path params, query params, headers, and body).
 - Validate responses and log validation errors.
-- Supports custom string formats (e.g., UUID RFC 4122).
+- Optionally fail invalid responses in strict mode.
+- Supports custom string formats (for example UUID RFC 4122).
 - Simple middleware API for Gin.
 
 ## Install
@@ -31,7 +32,14 @@ var spec []byte
 
 func main() {
 	r := gin.Default()
+
+	// Basic mode: logs response validation failures only.
 	r.Use(ginopenapivalidator.Validator(spec))
+
+	// Strict mode: invalid responses return 500.
+	r.Use(ginopenapivalidator.Validator(spec, ginopenapivalidator.ValidatorOptions{
+		StrictResponse: true,
+	}))
 
 	r.GET("/pets", func(c *gin.Context) {
 		c.JSON(200, []gin.H{{"name": "string", "tag": "string", "id": 1}})
