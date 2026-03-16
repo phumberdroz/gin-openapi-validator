@@ -1,0 +1,28 @@
+pkg/gin-openapi-validator/validationerror.go
+  45fc0ff89d901bf2 27,162,168,193
+pkg/gin-openapi-validator/validator.go
+  45fc0ff89d901bf2 5,7,11,22,26-27,30-31,33-43,48,55-79,82-83,86,94-116,123-128,141,154-162,164,166,170-171,176-178,181,184-192,198-231,236-241,243-248,251,257,265-301
+pkg/gin-openapi-validator/validator_test.go
+  45fc0ff89d901bf2 7,10,21,23-24,26-27,41,44-45,47,50-51,54-55,57-58,60-61,63,67-68,70,75-76,87,94,101,108,117,120,126,129,135,144-148,155-263
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "23ac82f374dbb32989cfd82f19de3a0db6aad3dc",
+  "prompts": {
+    "45fc0ff89d901bf2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cf7fd-b40a-7dc3-a69c-04eba1349172",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Pierre Humberdroz <p.humberdroz@gmail.com>",
+      "messages": [],
+      "total_additions": 373,
+      "total_deletions": 147,
+      "accepted_lines": 348,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/85052de8a6ed6d2392c1cf4c061c95309ed7246150b8b62951ce62d885802632"
+    }
+  }
+}
