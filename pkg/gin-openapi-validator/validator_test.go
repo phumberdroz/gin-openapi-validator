@@ -26,7 +26,9 @@ var s []byte
 
 func TestMain(m *testing.M) {
 	setupRouter()
+
 	hook = test.NewGlobal()
+
 	code := m.Run()
 	os.Exit(code)
 }
@@ -51,6 +53,7 @@ func setupRouter() {
 func request(request *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, request)
+
 	return w
 }
 
@@ -72,6 +75,7 @@ func TestPostStatusOk(t *testing.T) {
 
 func TestStatusOkButWrongResponse(t *testing.T) {
 	defer hook.Reset()
+
 	req, err := http.NewRequest(http.MethodGet, "/pets/1", nil)
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
@@ -86,6 +90,7 @@ func TestStatusOkButWrongResponse(t *testing.T) {
 func TestStatusOkUsersUuid(t *testing.T) {
 	req, err := http.NewRequest(http.MethodGet, "/users?userId=bc1a80b7-6e76-4985-be3d-cbf8f8e79a2f", nil)
 	assert.NoError(t, err)
+
 	resp := request(req)
 	assert.Equal(t, http.StatusOK, resp.Code)
 }
@@ -162,15 +167,20 @@ func TestBadRequests(t *testing.T) {
 		testCase := tc
 		t.Run(testCase.name, func(t *testing.T) {
 			hook.Reset()
+
 			req, err := http.NewRequest(testCase.method, testCase.url, bytes.NewBuffer([]byte(testCase.body)))
 			assert.NoError(t, err)
+
 			if testCase.setContentType {
 				req.Header.Set("Content-Type", "application/json")
 			}
+
 			resp := request(req)
 			assert.Equal(t, testCase.expectedStatusCode, resp.Code)
 			assert.Contains(t, resp.Body.String(), testCase.responseShouldContain)
+
 			var js json.RawMessage
+
 			assert.NoError(t, json.Unmarshal(resp.Body.Bytes(), &js))
 			assert.Len(t, hook.Entries, 0)
 		})
