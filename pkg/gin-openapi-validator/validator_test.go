@@ -221,6 +221,30 @@ func TestCustomRequestErrorHandlerHandlesValidationErrors(t *testing.T) {
 	assert.JSONEq(t, `{"error":"custom request handler"}`, resp.Body.String())
 }
 
+func TestCustomRequestErrorHandlerStopsChainWithoutAbort(t *testing.T) {
+	var routeCalled bool
+
+	gin.SetMode(gin.TestMode)
+
+	router := gin.New()
+	router.Use(ginopenapivalidator.Validator(spec, ginopenapivalidator.ValidatorOptions{
+		RequestErrorHandler: func(c *gin.Context, err error) {
+			_ = err
+			c.JSON(http.StatusBadRequest, gin.H{"error": "custom"})
+		},
+	}))
+	router.POST("/pets", func(c *gin.Context) {
+		routeCalled = true
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	resp := performRequest(t, router, http.MethodPost, "/pets", "not json", true)
+
+	assert.False(t, routeCalled)
+	assert.Equal(t, http.StatusBadRequest, resp.Code)
+	assert.JSONEq(t, `{"error":"custom"}`, resp.Body.String())
+}
+
 func TestCustomResponseErrorHandlerIsInvoked(t *testing.T) {
 	var handledErr error
 
@@ -297,4 +321,32 @@ func TestNilLoggerDoesNotLogOrPanic(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, resp.Code)
 	assert.True(t, strings.Contains(resp.Body.String(), `"no":"NO"`))
+}
+
+func TestStrictResponseAllowsValidChunkedResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var logOutput bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logOutput, nil))
+
+	router := gin.New()
+	router.Use(ginopenapivalidator.Validator(spec, ginopenapivalidator.ValidatorOptions{
+		StrictResponse: true,
+		Logger:         logger,
+	}))
+	router.GET("/pets", func(c *gin.Context) {
+		c.Header("Content-Type", "application/json; charset=utf-8")
+		_, err := c.Writer.Write([]byte(`[{"name":"string"`))
+		require.NoError(t, err)
+		c.Writer.Flush()
+
+		_, err = c.Writer.Write([]byte(`,"tag":"string","id":0}]`))
+		require.NoError(t, err)
+	})
+
+	resp := performRequest(t, router, http.MethodGet, "/pets", "", false)
+
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.JSONEq(t, `[{"name":"string","tag":"string","id":0}]`, resp.Body.String())
+	assert.NotContains(t, logOutput.String(), "response payload violates OpenAPI contract")
 }

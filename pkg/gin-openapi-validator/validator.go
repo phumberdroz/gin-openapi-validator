@@ -16,12 +16,13 @@ import (
 // responseBodyWriter captures the response body.
 type responseBodyWriter struct {
 	gin.ResponseWriter
-	body        *bytes.Buffer
-	statusCode  int
-	headers     http.Header
-	wroteHeader bool
-	flushed     bool
-	rewriteBody bool
+	body           *bytes.Buffer
+	validationBody *bytes.Buffer
+	statusCode     int
+	headers        http.Header
+	wroteHeader    bool
+	flushed        bool
+	rewriteBody    bool
 }
 
 func (w *responseBodyWriter) Write(b []byte) (int, error) {
@@ -34,6 +35,8 @@ func (w *responseBodyWriter) Write(b []byte) (int, error) {
 		return n, err
 	}
 
+	_, _ = w.validationBody.Write(b)
+
 	return n, nil
 }
 
@@ -42,12 +45,20 @@ func (w *responseBodyWriter) WriteString(s string) (int, error) {
 		w.WriteHeaderNow()
 	}
 
-	return w.body.WriteString(s)
+	n, err := w.body.WriteString(s)
+	if err != nil {
+		return n, err
+	}
+
+	_, _ = w.validationBody.WriteString(s)
+
+	return n, nil
 }
 
 func (w *responseBodyWriter) WriteHeader(code int) {
 	if w.rewriteBody && !w.flushed {
 		w.body.Reset()
+		w.validationBody.Reset()
 		w.rewriteBody = false
 	}
 
@@ -116,6 +127,7 @@ func newResponseBodyWriter(writer gin.ResponseWriter) *responseBodyWriter {
 	return &responseBodyWriter{
 		ResponseWriter: writer,
 		body:           &bytes.Buffer{},
+		validationBody: &bytes.Buffer{},
 		headers:        cloneHeader(writer.Header()),
 		statusCode:     http.StatusOK,
 	}
@@ -131,6 +143,10 @@ func cloneResponseBodyWriter(writer gin.ResponseWriter, source *responseBodyWrit
 
 	if source.body.Len() > 0 {
 		_, _ = cloned.body.Write(source.body.Bytes())
+	}
+
+	if source.validationBody.Len() > 0 {
+		_, _ = cloned.validationBody.Write(source.validationBody.Bytes())
 	}
 
 	cloned.headers = cloneHeader(source.headers)
@@ -240,6 +256,9 @@ func validatorHandler(router routers.Router, options ValidatorOptions, requestEr
 		requestValidationInput, err := validateIncomingRequest(c, router)
 		if err != nil {
 			requestErrorHandler(c, newContractError(ValidationPhaseRequest, err))
+			if !c.IsAborted() {
+				c.Abort()
+			}
 			return
 		}
 
@@ -286,8 +305,8 @@ func validateOutgoingResponse(c *gin.Context, requestValidationInput *openapi3fi
 		Header:                 writer.headers,
 	}
 
-	if writer.body.Len() > 0 {
-		responseValidationInput.SetBodyBytes(writer.body.Bytes())
+	if writer.validationBody.Len() > 0 {
+		responseValidationInput.SetBodyBytes(writer.validationBody.Bytes())
 	}
 
 	return openapi3filter.ValidateResponse(c.Request.Context(), responseValidationInput)
