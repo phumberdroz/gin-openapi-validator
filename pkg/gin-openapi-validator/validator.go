@@ -20,6 +20,8 @@ type responseBodyWriter struct {
 	statusCode  int
 	headers     http.Header
 	wroteHeader bool
+	flushed     bool
+	rewriteBody bool
 }
 
 func (w *responseBodyWriter) Write(b []byte) (int, error) {
@@ -44,6 +46,11 @@ func (w *responseBodyWriter) WriteString(s string) (int, error) {
 }
 
 func (w *responseBodyWriter) WriteHeader(code int) {
+	if w.rewriteBody && !w.flushed {
+		w.body.Reset()
+		w.rewriteBody = false
+	}
+
 	w.statusCode = code
 	w.wroteHeader = true
 }
@@ -79,23 +86,30 @@ func (w *responseBodyWriter) Written() bool {
 	return w.wroteHeader || w.body.Len() > 0
 }
 
-func (w *responseBodyWriter) Flush() {}
+func (w *responseBodyWriter) Flush() {
+	w.flush()
+	w.body.Reset()
 
-func (w *responseBodyWriter) flush() {
-	for k, vv := range w.headers {
-		w.ResponseWriter.Header()[k] = append([]string(nil), vv...)
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
 	}
-
-	if w.statusCode == 0 {
-		w.statusCode = http.StatusOK
-	}
-
-	w.ResponseWriter.WriteHeader(w.statusCode)
-	_, _ = w.ResponseWriter.Write(w.body.Bytes())
 }
 
-func (w *responseBodyWriter) modified() bool {
-	return w.statusCode != 0 || len(w.headers) > 0 || w.body.Len() > 0 || w.wroteHeader
+func (w *responseBodyWriter) flush() {
+	if !w.flushed {
+		for k, vv := range w.headers {
+			w.ResponseWriter.Header()[k] = append([]string(nil), vv...)
+		}
+
+		if w.statusCode == 0 {
+			w.statusCode = http.StatusOK
+		}
+
+		w.ResponseWriter.WriteHeader(w.statusCode)
+		w.flushed = true
+	}
+
+	_, _ = w.ResponseWriter.Write(w.body.Bytes())
 }
 
 func newResponseBodyWriter(writer gin.ResponseWriter) *responseBodyWriter {
@@ -105,6 +119,68 @@ func newResponseBodyWriter(writer gin.ResponseWriter) *responseBodyWriter {
 		headers:        cloneHeader(writer.Header()),
 		statusCode:     http.StatusOK,
 	}
+}
+
+func cloneResponseBodyWriter(writer gin.ResponseWriter, source *responseBodyWriter) *responseBodyWriter {
+	cloned := newResponseBodyWriter(writer)
+
+	cloned.statusCode = source.statusCode
+	cloned.wroteHeader = source.wroteHeader
+	cloned.flushed = false
+	cloned.rewriteBody = true
+
+	if source.body.Len() > 0 {
+		_, _ = cloned.body.Write(source.body.Bytes())
+	}
+
+	cloned.headers = cloneHeader(source.headers)
+
+	return cloned
+}
+
+type responseWriterSnapshot struct {
+	statusCode  int
+	wroteHeader bool
+	headers     http.Header
+	body        string
+}
+
+func snapshotResponseBodyWriter(writer *responseBodyWriter) responseWriterSnapshot {
+	return responseWriterSnapshot{
+		statusCode:  writer.statusCode,
+		wroteHeader: writer.wroteHeader,
+		headers:     cloneHeader(writer.headers),
+		body:        writer.body.String(),
+	}
+}
+
+func responseBodyWriterChanged(before responseWriterSnapshot, after *responseBodyWriter) bool {
+	if before.statusCode != after.statusCode || before.wroteHeader != after.wroteHeader || before.body != after.body.String() {
+		return true
+	}
+
+	return !headersEqual(before.headers, after.headers)
+}
+
+func headersEqual(left, right http.Header) bool {
+	if len(left) != len(right) {
+		return false
+	}
+
+	for key, leftValues := range left {
+		rightValues, ok := right[key]
+		if !ok || len(leftValues) != len(rightValues) {
+			return false
+		}
+
+		for i, value := range leftValues {
+			if rightValues[i] != value {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 func cloneHeader(header http.Header) http.Header {
@@ -219,15 +295,13 @@ func validateOutgoingResponse(c *gin.Context, requestValidationInput *openapi3fi
 
 func handleResponseValidationError(c *gin.Context, originalWriter gin.ResponseWriter, capturedWriter *responseBodyWriter, options ValidatorOptions, err error) {
 	if options.ResponseErrorHandler != nil {
-		handlerWriter := newResponseBodyWriter(originalWriter)
-
-		handlerWriter.headers = make(http.Header)
-		handlerWriter.statusCode = 0
+		handlerWriter := cloneResponseBodyWriter(originalWriter, capturedWriter)
+		before := snapshotResponseBodyWriter(handlerWriter)
 
 		c.Writer = handlerWriter
 		options.ResponseErrorHandler(c, err)
 
-		if handlerWriter.modified() {
+		if responseBodyWriterChanged(before, handlerWriter) {
 			handlerWriter.flush()
 			return
 		}

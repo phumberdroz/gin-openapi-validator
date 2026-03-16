@@ -226,10 +226,20 @@ func TestCustomResponseErrorHandlerIsInvoked(t *testing.T) {
 
 	var contractErr *ginopenapivalidator.ContractError
 
+	var (
+		observedStatus      int
+		observedSize        int
+		observedContentType string
+	)
+
 	router := newRouter(ginopenapivalidator.ValidatorOptions{
 		ResponseErrorHandler: func(c *gin.Context, err error) {
 			handledErr = err
 			require.ErrorAs(t, err, &contractErr)
+
+			observedStatus = c.Writer.Status()
+			observedSize = c.Writer.Size()
+			observedContentType = c.Writer.Header().Get("Content-Type")
 		},
 	})
 
@@ -242,6 +252,9 @@ func TestCustomResponseErrorHandlerIsInvoked(t *testing.T) {
 	require.NotNil(t, contractErr.ResponseError)
 	assert.Equal(t, http.StatusInternalServerError, contractErr.Status)
 	assert.NotEmpty(t, contractErr.Detail)
+	assert.Equal(t, http.StatusOK, observedStatus)
+	assert.Equal(t, len(`{"no":"NO"}`), observedSize)
+	assert.Equal(t, "application/json; charset=utf-8", observedContentType)
 	assert.Equal(t, http.StatusOK, resp.Code)
 	assert.JSONEq(t, `{"no":"NO"}`, resp.Body.String())
 }
