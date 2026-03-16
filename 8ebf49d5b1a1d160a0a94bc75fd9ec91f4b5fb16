@@ -1,0 +1,24 @@
+pkg/gin-openapi-validator/validator.go
+  d6ea60c06ac4b206 28-38,40-41,57-58,74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "8ebf49d5b1a1d160a0a94bc75fd9ec91f4b5fb16",
+  "prompts": {
+    "d6ea60c06ac4b206": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cf852-f74d-7a30-9a55-8ecacebda0a0",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Pierre Humberdroz <p.humberdroz@gmail.com>",
+      "messages": [],
+      "total_additions": 16,
+      "total_deletions": 5,
+      "accepted_lines": 16,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/9ad5de0022bb68aaf3f40ff38f763277db835cc6e83ba4a2dc9c653286b2fff4"
+    }
+  }
+}
