@@ -1,0 +1,24 @@
+.github/workflows/ci.yml
+  45fc0ff89d901bf2 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "02d3a8febeb34a42fc9e1d29697f3e4535cc226c",
+  "prompts": {
+    "45fc0ff89d901bf2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cf7fd-b40a-7dc3-a69c-04eba1349172",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Pierre Humberdroz <p.humberdroz@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 4,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/23ebe98a056aa7ff9f71f0dbba5bbb814998fb28b632f2250b425b92053a68f4"
+    }
+  }
+}
