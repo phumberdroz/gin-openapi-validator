@@ -358,7 +358,8 @@ func convertSchemaError(e *openapi3filter.RequestError, innerErr *openapi3.Schem
 			innerErr.Value, toJSONPointer(innerErr.JSONPointer()), strings.Join(enums, ", "))
 
 		value := fmt.Sprintf("%v", innerErr.Value)
-		if (e.Parameter.Explode == nil || *e.Parameter.Explode) &&
+		if e.Parameter != nil &&
+			(e.Parameter.Explode == nil || *e.Parameter.Explode) &&
 			(e.Parameter.Style == "" || e.Parameter.Style == "form") &&
 			strings.Contains(value, ",") {
 			parts := strings.Split(value, ",")
