@@ -1,0 +1,28 @@
+pkg/gin-openapi-validator/validationerror.go
+  45fc0ff89d901bf2 8,20-175,178-192
+pkg/gin-openapi-validator/validator.go
+  45fc0ff89d901bf2 166,177
+pkg/gin-openapi-validator/validator_test.go
+  45fc0ff89d901bf2 180-181,184,193-196,202-203,207,216-219,227,232,239-244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "f9b061b74b9df3b0c7831627324a676cd538ec6b",
+  "prompts": {
+    "45fc0ff89d901bf2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cf7fd-b40a-7dc3-a69c-04eba1349172",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Pierre Humberdroz <p.humberdroz@gmail.com>",
+      "messages": [],
+      "total_additions": 197,
+      "total_deletions": 2,
+      "accepted_lines": 197,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/5e394caaf675c9f6842b05cd7ccbec15ab8902b131a1ceab00d6424f962feb79"
+    }
+  }
+}
