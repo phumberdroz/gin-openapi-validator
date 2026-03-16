@@ -163,7 +163,7 @@ func validatorHandler(router routers.Router, options ValidatorOptions, requestEr
 	return func(c *gin.Context) {
 		requestValidationInput, err := validateIncomingRequest(c, router)
 		if err != nil {
-			requestErrorHandler(c, err)
+			requestErrorHandler(c, newContractError(ValidationPhaseRequest, err))
 			return
 		}
 
@@ -174,7 +174,7 @@ func validatorHandler(router routers.Router, options ValidatorOptions, requestEr
 		c.Next()
 
 		if err = validateOutgoingResponse(c, requestValidationInput, w); err != nil {
-			handleResponseValidationError(c, originalWriter, w, options, err)
+			handleResponseValidationError(c, originalWriter, w, options, newContractError(ValidationPhaseResponse, err))
 			return
 		}
 

@@ -177,8 +177,11 @@ func TestStrictResponseReturnsInternalServerError(t *testing.T) {
 }
 
 func TestCustomRequestErrorHandlerHandlesRouteErrors(t *testing.T) {
+	var contractErr *ginopenapivalidator.ContractError
+
 	router := newRouter(ginopenapivalidator.ValidatorOptions{
 		RequestErrorHandler: func(c *gin.Context, err error) {
+			require.ErrorAs(t, err, &contractErr)
 			c.AbortWithStatusJSON(http.StatusTeapot, gin.H{"error": err.Error()})
 		},
 	})
@@ -187,14 +190,21 @@ func TestCustomRequestErrorHandlerHandlesRouteErrors(t *testing.T) {
 
 	assert.Equal(t, http.StatusTeapot, resp.Code)
 	assert.Contains(t, resp.Body.String(), "no matching operation was found")
+	require.NotNil(t, contractErr)
+	assert.Equal(t, ginopenapivalidator.ValidationPhaseRequest, contractErr.Phase)
+	assert.Equal(t, ginopenapivalidator.ValidationKindRoute, contractErr.Kind)
+	assert.Equal(t, http.StatusNotFound, contractErr.Status)
 }
 
 func TestCustomRequestErrorHandlerHandlesValidationErrors(t *testing.T) {
 	var handledErr error
 
+	var contractErr *ginopenapivalidator.ContractError
+
 	router := newRouter(ginopenapivalidator.ValidatorOptions{
 		RequestErrorHandler: func(c *gin.Context, err error) {
 			handledErr = err
+			require.ErrorAs(t, err, &contractErr)
 
 			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": "custom request handler"})
 		},
@@ -203,6 +213,10 @@ func TestCustomRequestErrorHandlerHandlesValidationErrors(t *testing.T) {
 	resp := performRequest(t, router, http.MethodPost, "/pets", "not json", true)
 
 	require.Error(t, handledErr)
+	require.NotNil(t, contractErr)
+	assert.Equal(t, ginopenapivalidator.ValidationPhaseRequest, contractErr.Phase)
+	assert.Equal(t, ginopenapivalidator.ValidationKindParse, contractErr.Kind)
+	assert.Equal(t, "Could not parse request body", contractErr.Title)
 	assert.Equal(t, http.StatusBadGateway, resp.Code)
 	assert.JSONEq(t, `{"error":"custom request handler"}`, resp.Body.String())
 }
@@ -210,15 +224,24 @@ func TestCustomRequestErrorHandlerHandlesValidationErrors(t *testing.T) {
 func TestCustomResponseErrorHandlerIsInvoked(t *testing.T) {
 	var handledErr error
 
+	var contractErr *ginopenapivalidator.ContractError
+
 	router := newRouter(ginopenapivalidator.ValidatorOptions{
 		ResponseErrorHandler: func(c *gin.Context, err error) {
 			handledErr = err
+			require.ErrorAs(t, err, &contractErr)
 		},
 	})
 
 	resp := performRequest(t, router, http.MethodGet, "/pets/1", "", true)
 
 	require.Error(t, handledErr)
+	require.NotNil(t, contractErr)
+	assert.Equal(t, ginopenapivalidator.ValidationPhaseResponse, contractErr.Phase)
+	assert.Equal(t, ginopenapivalidator.ValidationKindSchema, contractErr.Kind)
+	require.NotNil(t, contractErr.ResponseError)
+	assert.Equal(t, http.StatusInternalServerError, contractErr.Status)
+	assert.NotEmpty(t, contractErr.Detail)
 	assert.Equal(t, http.StatusOK, resp.Code)
 	assert.JSONEq(t, `{"no":"NO"}`, resp.Body.String())
 }
