@@ -230,11 +230,13 @@ func TestCustomRequestErrorHandlerStopsChainWithoutAbort(t *testing.T) {
 	router.Use(ginopenapivalidator.Validator(spec, ginopenapivalidator.ValidatorOptions{
 		RequestErrorHandler: func(c *gin.Context, err error) {
 			_ = err
+
 			c.JSON(http.StatusBadRequest, gin.H{"error": "custom"})
 		},
 	}))
 	router.POST("/pets", func(c *gin.Context) {
 		routeCalled = true
+
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 
@@ -327,6 +329,7 @@ func TestStrictResponseAllowsValidChunkedResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	var logOutput bytes.Buffer
+
 	logger := slog.New(slog.NewTextHandler(&logOutput, nil))
 
 	router := gin.New()

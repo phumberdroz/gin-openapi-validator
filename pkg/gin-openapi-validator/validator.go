@@ -256,9 +256,11 @@ func validatorHandler(router routers.Router, options ValidatorOptions, requestEr
 		requestValidationInput, err := validateIncomingRequest(c, router)
 		if err != nil {
 			requestErrorHandler(c, newContractError(ValidationPhaseRequest, err))
+
 			if !c.IsAborted() {
 				c.Abort()
 			}
+
 			return
 		}
 
