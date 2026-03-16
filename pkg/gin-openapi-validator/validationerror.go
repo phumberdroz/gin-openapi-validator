@@ -1,10 +1,10 @@
 package ginopenapivalidator
+
 // Copied from https://github.com/getkin/kin-openapi/blob/17153345908503543b50b7b6409f9d030bae0beb/openapi3filter/validation_error_encoder.go
 // and modified
 // Original license is MIT by the authors of kin-openapi
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -52,7 +52,7 @@ func Decode(err error) (*openapi3filter.ValidationError, error) {
 
 func convertRouteError(e *routers.RouteError) *openapi3filter.ValidationError {
 	var cErr *openapi3filter.ValidationError
-	fmt.Println(errors.Is(e, routers.ErrPathNotFound))
+
 	//errors.As()
 	switch e.Reason {
 	case "Path doesn't support the HTTP method":
@@ -176,6 +176,16 @@ func convertSchemaError(e *openapi3filter.RequestError, innerErr *openapi3.Schem
 		cErr.Title += " See " + cErr.Source.Pointer
 	}
 
+	if innerErr.SchemaField == "type" &&
+		strings.Contains(strings.ToLower(innerErr.Reason), "integer") &&
+		cErr.Source != nil && cErr.Source.Pointer != "" {
+
+		cErr.Title = fmt.Sprintf(
+			"Field must be set to integer or not be present See %s",
+			cErr.Source.Pointer,
+		)
+	}
+
 	// Add details on allowed values for enums
 	if innerErr.SchemaField == "enum" &&
 		innerErr.Reason == "JSON value is not one of the allowed values" {
@@ -194,6 +204,7 @@ func convertSchemaError(e *openapi3filter.RequestError, innerErr *openapi3.Schem
 				e.Parameter.Name, strings.Join(parts, "&"+e.Parameter.Name+"="))
 		}
 	}
+
 	return cErr
 }
 
