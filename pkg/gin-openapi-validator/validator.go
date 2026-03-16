@@ -25,7 +25,20 @@ type responseBodyWriter struct {
 	rewriteBody    bool
 }
 
+func (w *responseBodyWriter) prepareRewrite() {
+	if !w.rewriteBody || w.flushed {
+		return
+	}
+
+	w.body.Reset()
+	w.validationBody.Reset()
+	w.headers = make(http.Header)
+	w.rewriteBody = false
+}
+
 func (w *responseBodyWriter) Write(b []byte) (int, error) {
+	w.prepareRewrite()
+
 	if !w.wroteHeader {
 		w.WriteHeaderNow()
 	}
@@ -41,6 +54,8 @@ func (w *responseBodyWriter) Write(b []byte) (int, error) {
 }
 
 func (w *responseBodyWriter) WriteString(s string) (int, error) {
+	w.prepareRewrite()
+
 	if !w.wroteHeader {
 		w.WriteHeaderNow()
 	}
@@ -56,11 +71,7 @@ func (w *responseBodyWriter) WriteString(s string) (int, error) {
 }
 
 func (w *responseBodyWriter) WriteHeader(code int) {
-	if w.rewriteBody && !w.flushed {
-		w.body.Reset()
-		w.validationBody.Reset()
-		w.rewriteBody = false
-	}
+	w.prepareRewrite()
 
 	w.statusCode = code
 	w.wroteHeader = true

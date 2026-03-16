@@ -227,6 +227,7 @@ func TestCustomRequestErrorHandlerStopsChainWithoutAbort(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
+
 	router.Use(ginopenapivalidator.Validator(spec, ginopenapivalidator.ValidatorOptions{
 		RequestErrorHandler: func(c *gin.Context, err error) {
 			_ = err
@@ -234,6 +235,7 @@ func TestCustomRequestErrorHandlerStopsChainWithoutAbort(t *testing.T) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "custom"})
 		},
 	}))
+
 	router.POST("/pets", func(c *gin.Context) {
 		routeCalled = true
 
