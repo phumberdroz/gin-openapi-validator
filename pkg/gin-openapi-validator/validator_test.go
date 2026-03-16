@@ -304,6 +304,33 @@ func TestCustomResponseErrorHandlerCanReplaceResponse(t *testing.T) {
 	assert.NotContains(t, resp.Body.String(), `"no":"NO"`)
 }
 
+func TestCustomResponseErrorHandlerReplacementPreservesHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router := gin.New()
+	router.Use(ginopenapivalidator.Validator(spec, ginopenapivalidator.ValidatorOptions{
+		ResponseErrorHandler: func(c *gin.Context, err error) {
+			_ = err
+
+			c.AbortWithStatusJSON(http.StatusTeapot, gin.H{"error": "custom response handler"})
+		},
+	}))
+	router.GET("/pets/:id", func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("X-Trace-ID", "trace-123")
+		c.SetCookie("session", "abc", 60, "/", "", false, true)
+		c.JSON(http.StatusOK, gin.H{"no": "NO"})
+	})
+
+	resp := performRequest(t, router, http.MethodGet, "/pets/1", "", true)
+
+	assert.Equal(t, http.StatusTeapot, resp.Code)
+	assert.JSONEq(t, `{"error":"custom response handler"}`, resp.Body.String())
+	assert.Equal(t, "*", resp.Header().Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, "trace-123", resp.Header().Get("X-Trace-ID"))
+	assert.Contains(t, strings.Join(resp.Header()["Set-Cookie"], "\n"), "session=abc")
+}
+
 func TestStrictResponseFallsBackToDefaultWhenCustomResponseHandlerDoesNothing(t *testing.T) {
 	router := newRouter(ginopenapivalidator.ValidatorOptions{
 		StrictResponse: true,
@@ -325,6 +352,74 @@ func TestNilLoggerDoesNotLogOrPanic(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, resp.Code)
 	assert.True(t, strings.Contains(resp.Body.String(), `"no":"NO"`))
+}
+
+func TestStrictResponseDoesNotRewriteAfterFlush(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var logOutput bytes.Buffer
+
+	logger := slog.New(slog.NewTextHandler(&logOutput, nil))
+
+	router := gin.New()
+	router.Use(ginopenapivalidator.Validator(spec, ginopenapivalidator.ValidatorOptions{
+		StrictResponse: true,
+		Logger:         logger,
+	}))
+	router.GET("/pets/:id", func(c *gin.Context) {
+		c.Header("Content-Type", "application/json; charset=utf-8")
+		_, err := c.Writer.Write([]byte(`{"no"`))
+		require.NoError(t, err)
+		c.Writer.Flush()
+
+		_, err = c.Writer.Write([]byte(`:"NO"}`))
+		require.NoError(t, err)
+	})
+
+	resp := performRequest(t, router, http.MethodGet, "/pets/1", "", false)
+
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.JSONEq(t, `{"no":"NO"}`, resp.Body.String())
+	assert.Contains(t, logOutput.String(), "response payload violates OpenAPI contract")
+}
+
+func TestCustomResponseErrorHandlerCannotReplaceAfterFlush(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var (
+		handlerCalled bool
+		logOutput     bytes.Buffer
+	)
+
+	logger := slog.New(slog.NewTextHandler(&logOutput, nil))
+
+	router := gin.New()
+	router.Use(ginopenapivalidator.Validator(spec, ginopenapivalidator.ValidatorOptions{
+		Logger: logger,
+		ResponseErrorHandler: func(c *gin.Context, err error) {
+			_ = err
+			handlerCalled = true
+
+			c.AbortWithStatusJSON(http.StatusTeapot, gin.H{"error": "custom response handler"})
+		},
+	}))
+	router.GET("/pets/:id", func(c *gin.Context) {
+		c.Header("Content-Type", "application/json; charset=utf-8")
+		_, err := c.Writer.Write([]byte(`{"no"`))
+		require.NoError(t, err)
+		c.Writer.Flush()
+
+		_, err = c.Writer.Write([]byte(`:"NO"}`))
+		require.NoError(t, err)
+	})
+
+	resp := performRequest(t, router, http.MethodGet, "/pets/1", "", false)
+
+	assert.False(t, handlerCalled)
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.JSONEq(t, `{"no":"NO"}`, resp.Body.String())
+	assert.Contains(t, logOutput.String(), "response payload violates OpenAPI contract")
+	assert.NotContains(t, resp.Body.String(), "custom response handler")
 }
 
 func TestStrictResponseAllowsValidChunkedResponse(t *testing.T) {

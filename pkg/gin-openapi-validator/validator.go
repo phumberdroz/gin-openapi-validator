@@ -32,7 +32,7 @@ func (w *responseBodyWriter) prepareRewrite() {
 
 	w.body.Reset()
 	w.validationBody.Reset()
-	w.headers = make(http.Header)
+	w.headers.Del("Content-Length")
 	w.rewriteBody = false
 }
 
@@ -106,6 +106,10 @@ func (w *responseBodyWriter) Size() int {
 
 func (w *responseBodyWriter) Written() bool {
 	return w.wroteHeader || w.body.Len() > 0
+}
+
+func (w *responseBodyWriter) committed() bool {
+	return w.flushed
 }
 
 func (w *responseBodyWriter) Flush() {
@@ -221,13 +225,15 @@ func cloneHeader(header http.Header) http.Header {
 
 type ValidatorOptions struct {
 	// If true, the middleware returns HTTP 500 when the response body
-	// violates the OpenAPI specifications.
+	// violates the OpenAPI specifications before any bytes have been
+	// flushed to the client.
 	StrictResponse bool
 	// Logger receives non-strict response validation failures when provided.
 	Logger *slog.Logger
 	// RequestErrorHandler handles request validation failures when provided.
 	RequestErrorHandler func(*gin.Context, error)
 	// ResponseErrorHandler handles response validation failures when provided.
+	// It can replace the response only before any bytes have been flushed.
 	ResponseErrorHandler func(*gin.Context, error)
 }
 
@@ -326,6 +332,15 @@ func validateOutgoingResponse(c *gin.Context, requestValidationInput *openapi3fi
 }
 
 func handleResponseValidationError(c *gin.Context, originalWriter gin.ResponseWriter, capturedWriter *responseBodyWriter, options ValidatorOptions, err error) {
+	if capturedWriter.committed() {
+		logResponseValidationError(c, options.Logger, err)
+
+		c.Writer = originalWriter
+		capturedWriter.flush()
+
+		return
+	}
+
 	if options.ResponseErrorHandler != nil {
 		handlerWriter := cloneResponseBodyWriter(originalWriter, capturedWriter)
 		before := snapshotResponseBodyWriter(handlerWriter)
@@ -372,17 +387,7 @@ func defaultRequestErrorHandler(c *gin.Context, err error) {
 func defaultResponseErrorHandler(options ValidatorOptions) func(*gin.Context, error) {
 	return func(c *gin.Context, err error) {
 		if !options.StrictResponse {
-			if options.Logger != nil {
-				attrs := []any{"error", err}
-				if responseWriter, ok := c.Writer.(*responseBodyWriter); ok {
-					attrs = append(attrs,
-						"status", responseWriter.Status(),
-						"headers", headerPairs(responseWriter.headers),
-					)
-				}
-
-				options.Logger.ErrorContext(c.Request.Context(), "response payload violates OpenAPI contract", attrs...)
-			}
+			logResponseValidationError(c, options.Logger, err)
 
 			return
 		}
@@ -392,6 +397,22 @@ func defaultResponseErrorHandler(options ValidatorOptions) func(*gin.Context, er
 			"detail": "Response body does not conform to the OpenAPI specification",
 		})
 	}
+}
+
+func logResponseValidationError(c *gin.Context, logger *slog.Logger, err error) {
+	if logger == nil {
+		return
+	}
+
+	attrs := []any{"error", err}
+	if responseWriter, ok := c.Writer.(*responseBodyWriter); ok {
+		attrs = append(attrs,
+			"status", responseWriter.Status(),
+			"headers", headerPairs(responseWriter.headers),
+		)
+	}
+
+	logger.ErrorContext(c.Request.Context(), "response payload violates OpenAPI contract", attrs...)
 }
 
 func headerPairs(header http.Header) []string {
