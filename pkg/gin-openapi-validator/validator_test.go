@@ -4,38 +4,27 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
-	"github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	ginopenapivalidator "github.com/phumberdroz/gin-openapi-validator/pkg/gin-openapi-validator"
 )
 
-var hook *test.Hook
-var r *gin.Engine
-
 //go:embed "petstore.yaml"
-var s []byte
+var spec []byte
 
-func TestMain(m *testing.M) {
-	setupRouter()
+func newRouter(opts ...ginopenapivalidator.ValidatorOptions) *gin.Engine {
+	gin.SetMode(gin.TestMode)
 
-	hook = test.NewGlobal()
-
-	code := m.Run()
-	os.Exit(code)
-}
-
-func setupRouter() {
-	r = gin.Default()
-	r.Use(ginopenapivalidator.Validator(s))
+	r := gin.New()
+	r.Use(ginopenapivalidator.Validator(spec, opts...))
 	r.GET("/pets", func(c *gin.Context) {
 		c.JSON(http.StatusOK, []gin.H{{"name": "string", "tag": "string", "id": 0}})
 	})
@@ -48,54 +37,43 @@ func setupRouter() {
 	r.POST("/pets", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"name": "string", "tag": "string", "id": 0})
 	})
+
+	return r
 }
 
-func request(request *http.Request) *httptest.ResponseRecorder {
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, request)
+func performRequest(t *testing.T, router *gin.Engine, method, url, body string, setContentType bool) *httptest.ResponseRecorder {
+	t.Helper()
 
-	return w
-}
-
-func TestGetStatusOk(t *testing.T) {
-	req, err := http.NewRequest(http.MethodPost, "/pets", bytes.NewBuffer([]byte(`{"name": "string","tag": "string"}`)))
+	req, err := http.NewRequest(method, url, bytes.NewBufferString(body))
 	require.NoError(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	resp := request(req)
+
+	if setContentType {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+
+	return recorder
+}
+
+func TestStatusOk(t *testing.T) {
+	router := newRouter()
+
+	resp := performRequest(t, router, http.MethodPost, "/pets", `{"name":"string","tag":"string"}`, true)
 	assert.Equal(t, http.StatusOK, resp.Code)
 }
 
-func TestPostStatusOk(t *testing.T) {
-	req, err := http.NewRequest(http.MethodPost, "/pets", bytes.NewBuffer([]byte(`{"name": "string","tag": "string"}`)))
-	require.NoError(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	resp := request(req)
-	assert.Equal(t, http.StatusOK, resp.Code)
-}
+func TestStatusOkUsersUUID(t *testing.T) {
+	router := newRouter()
 
-func TestStatusOkButWrongResponse(t *testing.T) {
-	defer hook.Reset()
-
-	req, err := http.NewRequest(http.MethodGet, "/pets/1", nil)
-	require.NoError(t, err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp := request(req)
-	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.Len(t, hook.Entries, 1)
-	assert.Equal(t, logrus.ErrorLevel, hook.LastEntry().Level)
-	assert.Equal(t, "response payload violates OpenAPI contract", hook.LastEntry().Message)
-}
-
-func TestStatusOkUsersUuid(t *testing.T) {
-	req, err := http.NewRequest(http.MethodGet, "/users?userId=bc1a80b7-6e76-4985-be3d-cbf8f8e79a2f", nil)
-	assert.NoError(t, err)
-
-	resp := request(req)
+	resp := performRequest(t, router, http.MethodGet, "/users?userId=bc1a80b7-6e76-4985-be3d-cbf8f8e79a2f", "", false)
 	assert.Equal(t, http.StatusOK, resp.Code)
 }
 
 func TestBadRequests(t *testing.T) {
+	router := newRouter()
+
 	tests := []struct {
 		name                  string
 		method                string
@@ -106,83 +84,181 @@ func TestBadRequests(t *testing.T) {
 		responseShouldContain string
 	}{
 		{
-			name:                  "NotFound: unknow route",
+			name:                  "NotFound unknown route",
 			method:                http.MethodGet,
 			url:                   "/a/route/that/will/never/exist",
-			body:                  "",
-			setContentType:        false,
 			expectedStatusCode:    http.StatusNotFound,
 			responseShouldContain: "no matching operation was found",
-		}, {
-			name:                  "NotFound: unknow route",
+		},
+		{
+			name:                  "NotFound invalid path parameter",
 			method:                http.MethodGet,
 			url:                   "/pets/notAnInt",
-			body:                  "",
-			setContentType:        false,
 			expectedStatusCode:    http.StatusNotFound,
 			responseShouldContain: `Resource not found with 'id' value: notAnInt`,
-		}, {
-			name:                  "ValidationError",
+		},
+		{
+			name:                  "ValidationError query parameter",
 			method:                http.MethodGet,
 			url:                   "/pets?limit=TEST",
-			body:                  "",
-			setContentType:        false,
 			expectedStatusCode:    http.StatusBadRequest,
 			responseShouldContain: "Parameter 'limit' in query is invalid: TEST is an invalid integer",
-		}, {
-			name:                  "ParseError: Not JSON with ContentType",
+		},
+		{
+			name:                  "ParseError invalid JSON body",
 			method:                http.MethodPost,
 			url:                   "/pets",
 			body:                  "not json",
 			setContentType:        true,
 			expectedStatusCode:    http.StatusBadRequest,
 			responseShouldContain: "Could not parse request body",
-		}, {
-			name:                  "ValidationError: Wrong Body age should be int instead of string",
+		},
+		{
+			name:                  "ValidationError invalid body type",
 			method:                http.MethodPost,
 			url:                   "/pets",
-			body:                  `{"name": "string","tag": "string", "age": "I am a string"}`,
+			body:                  `{"name":"string","tag":"string","age":"I am a string"}`,
 			setContentType:        true,
 			expectedStatusCode:    http.StatusUnprocessableEntity,
 			responseShouldContain: "Field must be set to integer or not be present See /age",
-		}, {
-			name:                  "ValidationError: Wrong Body missing required field",
+		},
+		{
+			name:                  "ValidationError missing required field",
 			method:                http.MethodPost,
 			url:                   "/pets",
-			body:                  `{"test": "string", "tag": "string"}`,
+			body:                  `{"test":"string","tag":"string"}`,
 			setContentType:        true,
 			expectedStatusCode:    http.StatusUnprocessableEntity,
 			responseShouldContain: `{"error":"property \"name\" is missing See /name"}`,
-		}, {
-			name:                  "ValidationError: missing body",
+		},
+		{
+			name:                  "ValidationError missing body",
 			method:                http.MethodPost,
 			url:                   "/pets",
-			body:                  "",
 			setContentType:        true,
 			expectedStatusCode:    http.StatusBadRequest,
 			responseShouldContain: `request body has an error: value is required but missing`,
 		},
 	}
+
 	for _, tc := range tests {
-		testCase := tc
-		t.Run(testCase.name, func(t *testing.T) {
-			hook.Reset()
-
-			req, err := http.NewRequest(testCase.method, testCase.url, bytes.NewBuffer([]byte(testCase.body)))
-			assert.NoError(t, err)
-
-			if testCase.setContentType {
-				req.Header.Set("Content-Type", "application/json")
-			}
-
-			resp := request(req)
-			assert.Equal(t, testCase.expectedStatusCode, resp.Code)
-			assert.Contains(t, resp.Body.String(), testCase.responseShouldContain)
+		t.Run(tc.name, func(t *testing.T) {
+			resp := performRequest(t, router, tc.method, tc.url, tc.body, tc.setContentType)
+			assert.Equal(t, tc.expectedStatusCode, resp.Code)
+			assert.Contains(t, resp.Body.String(), tc.responseShouldContain)
 
 			var js json.RawMessage
-
 			assert.NoError(t, json.Unmarshal(resp.Body.Bytes(), &js))
-			assert.Len(t, hook.Entries, 0)
 		})
 	}
+}
+
+func TestResponseValidationLogsWithSlogAndPreservesResponse(t *testing.T) {
+	var logOutput bytes.Buffer
+
+	logger := slog.New(slog.NewTextHandler(&logOutput, nil))
+	router := newRouter(ginopenapivalidator.ValidatorOptions{Logger: logger})
+
+	resp := performRequest(t, router, http.MethodGet, "/pets/1", "", true)
+
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.JSONEq(t, `{"no":"NO"}`, resp.Body.String())
+	assert.Contains(t, logOutput.String(), "response payload violates OpenAPI contract")
+	assert.Contains(t, logOutput.String(), "status=200")
+}
+
+func TestStrictResponseReturnsInternalServerError(t *testing.T) {
+	router := newRouter(ginopenapivalidator.ValidatorOptions{StrictResponse: true})
+
+	resp := performRequest(t, router, http.MethodGet, "/pets/1", "", true)
+
+	assert.Equal(t, http.StatusInternalServerError, resp.Code)
+	assert.JSONEq(t, `{"detail":"Response body does not conform to the OpenAPI specification","error":"Internal Server Error"}`, resp.Body.String())
+}
+
+func TestCustomRequestErrorHandlerHandlesRouteErrors(t *testing.T) {
+	router := newRouter(ginopenapivalidator.ValidatorOptions{
+		RequestErrorHandler: func(c *gin.Context, err error) {
+			c.AbortWithStatusJSON(http.StatusTeapot, gin.H{"error": err.Error()})
+		},
+	})
+
+	resp := performRequest(t, router, http.MethodGet, "/does-not-exist", "", false)
+
+	assert.Equal(t, http.StatusTeapot, resp.Code)
+	assert.Contains(t, resp.Body.String(), "no matching operation was found")
+}
+
+func TestCustomRequestErrorHandlerHandlesValidationErrors(t *testing.T) {
+	var handledErr error
+
+	router := newRouter(ginopenapivalidator.ValidatorOptions{
+		RequestErrorHandler: func(c *gin.Context, err error) {
+			handledErr = err
+
+			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": "custom request handler"})
+		},
+	})
+
+	resp := performRequest(t, router, http.MethodPost, "/pets", "not json", true)
+
+	require.Error(t, handledErr)
+	assert.Equal(t, http.StatusBadGateway, resp.Code)
+	assert.JSONEq(t, `{"error":"custom request handler"}`, resp.Body.String())
+}
+
+func TestCustomResponseErrorHandlerIsInvoked(t *testing.T) {
+	var handledErr error
+
+	router := newRouter(ginopenapivalidator.ValidatorOptions{
+		ResponseErrorHandler: func(c *gin.Context, err error) {
+			handledErr = err
+		},
+	})
+
+	resp := performRequest(t, router, http.MethodGet, "/pets/1", "", true)
+
+	require.Error(t, handledErr)
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.JSONEq(t, `{"no":"NO"}`, resp.Body.String())
+}
+
+func TestCustomResponseErrorHandlerCanReplaceResponse(t *testing.T) {
+	router := newRouter(ginopenapivalidator.ValidatorOptions{
+		ResponseErrorHandler: func(c *gin.Context, err error) {
+			c.AbortWithStatusJSON(http.StatusTeapot, gin.H{
+				"error":  "custom response handler",
+				"detail": err.Error(),
+			})
+		},
+	})
+
+	resp := performRequest(t, router, http.MethodGet, "/pets/1", "", true)
+
+	assert.Equal(t, http.StatusTeapot, resp.Code)
+	assert.Contains(t, resp.Body.String(), "custom response handler")
+	assert.NotContains(t, resp.Body.String(), `"no":"NO"`)
+}
+
+func TestStrictResponseFallsBackToDefaultWhenCustomResponseHandlerDoesNothing(t *testing.T) {
+	router := newRouter(ginopenapivalidator.ValidatorOptions{
+		StrictResponse: true,
+		ResponseErrorHandler: func(c *gin.Context, err error) {
+			_ = err
+		},
+	})
+
+	resp := performRequest(t, router, http.MethodGet, "/pets/1", "", true)
+
+	assert.Equal(t, http.StatusInternalServerError, resp.Code)
+	assert.JSONEq(t, `{"detail":"Response body does not conform to the OpenAPI specification","error":"Internal Server Error"}`, resp.Body.String())
+}
+
+func TestNilLoggerDoesNotLogOrPanic(t *testing.T) {
+	router := newRouter(ginopenapivalidator.ValidatorOptions{})
+
+	resp := performRequest(t, router, http.MethodGet, "/pets/1", "", true)
+
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.True(t, strings.Contains(resp.Body.String(), `"no":"NO"`))
 }

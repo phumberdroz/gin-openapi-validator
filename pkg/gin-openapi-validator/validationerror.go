@@ -24,6 +24,7 @@ func Decode(err error) (*openapi3filter.ValidationError, error) {
 			Status: http.StatusNotFound,
 			Title:  "not found",
 		}
+
 		return cErr, nil
 	}
 
@@ -158,11 +159,13 @@ func convertSchemaError(e *openapi3filter.RequestError, innerErr *openapi3.Schem
 		cErr.Source = &openapi3filter.ValidationErrorSource{
 			Parameter: e.Parameter.Name,
 		}
+
 		cErr.Title += " See " + cErr.Source.Parameter
 	} else if innerErr.JSONPointer() != nil {
 		cErr.Source = &openapi3filter.ValidationErrorSource{
 			Pointer: toJSONPointer(innerErr.JSONPointer()),
 		}
+
 		cErr.Title += " See " + cErr.Source.Pointer
 	}
 
@@ -187,6 +190,7 @@ func convertSchemaError(e *openapi3filter.RequestError, innerErr *openapi3.Schem
 			(e.Parameter.Style == "" || e.Parameter.Style == "form") &&
 			strings.Contains(value, ",") {
 			parts := strings.Split(value, ",")
+
 			cErr.Detail += "; " + fmt.Sprintf("perhaps you intended '?%s=%s'",
 				e.Parameter.Name, strings.Join(parts, "&"+e.Parameter.Name+"="))
 		}
